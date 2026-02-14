@@ -1,0 +1,13 @@
+[
+  {
+    "key": "facilitator",
+    "label": "👥 Sadhanapada Facilitator Meeting",
+    "requiresFileUpload": false
+  },
+
+  {
+    "key": "applicant",
+    "label": "👤 Sadhanapada Applicant Interview",
+    "requiresFileUpload": false
+  }
+]

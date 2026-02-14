@@ -1,0 +1,56 @@
+name: Deploy to EC2 via ECR
+on:
+  push:
+    branches: [ "main" ]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build & Push Backend Image
+        run: |
+          BACKEND_REPO="${{ secrets.ECR_BACKEND_REPO }}"
+          docker build -t $BACKEND_REPO:latest -f backend/Dockerfile ./backend
+          docker push $BACKEND_REPO:latest
+
+      - name: Build & Push Frontend Image
+        env:
+          REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+        run: |
+          FRONTEND_REPO="${{ secrets.ECR_FRONTEND_REPO }}"
+          docker build \
+            --build-arg REACT_APP_SUPABASE_URL=$REACT_APP_SUPABASE_URL \
+            --build-arg REACT_APP_SUPABASE_ANON_KEY=$REACT_APP_SUPABASE_ANON_KEY \
+            -t $FRONTEND_REPO:latest \
+            -f Dockerfile.frontend .
+          docker push $FRONTEND_REPO:latest
+
+      - name: Deploy on EC2 with docker-compose
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "Logging into ECR..."
+            aws ecr get-login-password --region ap-south-1 | sudo docker login --username AWS --password-stdin $(echo ${{ secrets.ECR_BACKEND_REPO }} | cut -d'/' -f1)
+
+            echo "Pulling latest images..."
+            cd /home/ubuntu/app
+            sudo docker-compose pull
+
+            echo "Restarting containers..."
+            sudo docker-compose up -d
